@@ -3,6 +3,22 @@ from flask_cors import CORS
 import subprocess
 import threading
 import queue
+import platform
+
+os = platform.system
+print(os)
+
+if os == Android (
+shelltyp = "sh"
+) 
+
+if os == Linux (
+shelltyp = "bash"
+) 
+
+if os == Windows (
+shelltyp = "cmd"
+) 
 
 app = Flask(__name__)
 CORS(app)
@@ -13,7 +29,7 @@ res_queue = queue.Queue()
 
 # Start a persistent shell
 shell = subprocess.Popen(
-    ["bash"],  # or "cmd" on Windows
+    [shelltyp],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT,
