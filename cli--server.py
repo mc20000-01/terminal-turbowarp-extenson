@@ -4,32 +4,56 @@ import subprocess
 import threading
 import queue
 import platform
+import os
+import sys
 
-os = platform.system
-print(os)
+def detect_os():
+    system = platform.system()
+    
+    # Windows
+    if system == "Windows":
+        return "windows"
 
-if os == Android (
-shelltyp = "sh"
-) 
+    # macOS
+    if system == "Darwin":
+        return "mac"
 
-if os == Linux (
-shelltyp = "bash"
-) 
+    # Android (Termux, Pydroid etc)
+    if system == "Linux":
+        if "ANDROID_DATA" in os.environ:
+            return "android"
+        if "PYDROID_APP" in os.environ:
+            return "android"
+        if "/data/data/" in sys.executable:
+            return "android"
+        return "linux"
 
-if os == Windows (
-shelltyp = "cmd"
-) 
+    return "unknown"
+
+real_os = detect_os()
+print("Detected OS:", real_os)
+
+# Pick correct shell
+if real_os == "android":
+    shelltype = "sh"   # Android/Termux/Pydroid
+elif real_os == "linux":
+    shelltype = "bash"
+elif real_os == "windows":
+    shelltype = "cmd"
+else:
+    shelltype = "sh"   # fallback
+
+print("Using shell:", shelltype)
 
 app = Flask(__name__)
 CORS(app)
 
-# Queue for commands and results
-cmd_queue = queue.Queue()
+# Command output queue
 res_queue = queue.Queue()
 
-# Start a persistent shell
+# Start persistent shell
 shell = subprocess.Popen(
-    [shelltyp],
+    [shelltype],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT,
@@ -38,33 +62,31 @@ shell = subprocess.Popen(
     universal_newlines=True,
 )
 
-# Function to continuously read shell output
+# Read shell output continuously
 def read_output():
     for line in shell.stdout:
         res_queue.put(line)
-    shell.stdout.close()
 
 threading.Thread(target=read_output, daemon=True).start()
 
 @app.route("/run", methods=["POST"])
 def run():
     data = request.get_json()
-    command = data.get("command")
+    command = data.get("command", "")
+
     if not command.endswith("\n"):
         command += "\n"
+
     try:
-        # send command to persistent shell
+        # write command to persistent shell
         shell.stdin.write(command)
         shell.stdin.flush()
 
-        # collect output until prompt appears (simple heuristic)
         output = ""
         while True:
             try:
                 line = res_queue.get(timeout=0.1)
                 output += line
-                if line.strip().endswith("$") or line.strip().endswith("#"):
-                    break
             except queue.Empty:
                 break
 
@@ -73,6 +95,7 @@ def run():
             "stderr": "",
             "returncode": 0
         })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
