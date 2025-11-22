@@ -1,13 +1,13 @@
-// Name: Terminal (v3)
-// ID: twTerminalV3
-// Description: Fully stable terminal extension for TurboWarp.
+// Name: Terminal Persistent (v4)
+// ID: twTerminalPersistentV4
+// Description: Terminal extension for TurboWarp that supports persistent shell sessions with multi-line output.
 // License: MIT
 
-(function (Scratch) {
+(function(Scratch) {
   "use strict";
   if (!Scratch.extensions.unsandboxed) throw new Error("Cannot load outside unsandboxed mode");
 
-  const extensionId = "twTerminalV3";
+  const extensionId = "twTerminalPersistentV4";
   const { BlockType, ArgumentType, Cast } = Scratch;
 
   class Events {
@@ -16,7 +16,7 @@
     activate(name) { const blocks = this.blocks[name]; if (blocks) for (const block of blocks) Scratch.vm.runtime.startHats(block); }
   }
 
-  class TerminalV3 {
+  class TerminalPersistent {
     constructor() {
       this.events = new Events();
       this.lastOutput = "";
@@ -25,7 +25,7 @@
       this.requestRunning = false;
       this.bridgeUrl = "http://127.0.0.1:3050/run";
 
-      // bind all block functions
+      // bind all functions
       this.runCommand = this.runCommand.bind(this);
       this.runCommandAsync = this.runCommandAsync.bind(this);
       this.whenOutput = this.whenOutput.bind(this);
@@ -37,14 +37,13 @@
       this.setBridgeUrlBlock = this.setBridgeUrlBlock.bind(this);
 
       this.events.add("output", extensionId + "_whenOutput");
-
       Scratch.vm.runtime.on("RUNTIME_DISPOSED", () => { this.clearOutput(); });
     }
 
     getInfo() {
       return {
         id: extensionId,
-        name: "Terminal",
+        name: "Terminal Persistent",
         color1: "#4a90e2",
         color2: "#3a78c2",
         blocks: [
@@ -64,30 +63,41 @@
     async runCommand(args) {
       const cmd = Cast.toString(args.CMD);
       this.requestRunning = true;
+
       try {
         const res = await Scratch.fetch(this.bridgeUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: cmd }),
+          body: JSON.stringify({ command: cmd })
         });
+
         let data;
         try { data = await res.json(); } catch { data = { stdout: "", stderr: "", error: "invalid json response" }; }
-        this.lastOutput = data.stdout || "";
+
+        // preserve multi-line output and prompt lines
+        this.lastOutput = data.stdout ? String(data.stdout) : "";
         this.lastError = data.stderr || data.error || "";
         this.lastExitCode = typeof data.returncode === "number" ? data.returncode : null;
+
         this.events.activate("output");
       } catch (err) {
         this.lastOutput = "";
         this.lastError = String(err);
         this.lastExitCode = null;
         this.events.activate("output");
-      } finally { this.requestRunning = false; }
-      return this.lastOutput || this.lastError || "";
+      } finally {
+        this.requestRunning = false;
+      }
+
+      // return full output or error
+      if (this.lastOutput.trim()) return this.lastOutput;
+      if (this.lastError.trim()) return this.lastError;
+      return "";
     }
 
     runCommandAsync(args) { (async () => { await this.runCommand(args); })(); }
 
-    whenOutput() { /* event handler fires via Events */ }
+    whenOutput() { /* event triggered via Events */ }
 
     lastOutputBlock() { return this.lastOutput; }
     lastErrorBlock() { return this.lastError; }
@@ -97,5 +107,5 @@
     setBridgeUrlBlock(args) { this.bridgeUrl = Cast.toString(args.URL); }
   }
 
-  Scratch.extensions.register(new TerminalV3());
+  Scratch.extensions.register(new TerminalPersistent());
 })(Scratch);
